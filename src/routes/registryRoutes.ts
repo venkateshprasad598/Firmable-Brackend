@@ -8,7 +8,7 @@ import {
 const router = Router();
 
 router.post("/upload-xml", uploadXml);
-router.post("/abn-records", getRegistryRecords);
+router.post("/registry-records", getRegistryRecords);
 router.get("/distinct", getDistinctValues);
 
 export default router;
