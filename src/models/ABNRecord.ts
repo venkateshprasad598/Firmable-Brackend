@@ -18,4 +18,8 @@ const ABNSchema = new mongoose.Schema({
   //   replaced: String,
 });
 
+ABNSchema.index({ status: 1, state: 1 });
+ABNSchema.index({ "entityType.ind": 1, name: 1 });
+ABNSchema.index({ recordLastUpdatedDate: 1 });
+
 export const ABNRecord = mongoose.model("ABNRecord", ABNSchema);

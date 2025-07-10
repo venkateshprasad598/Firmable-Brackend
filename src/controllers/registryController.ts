@@ -9,10 +9,8 @@ export const uploadXml = async (req: any, res: any) => {
   try {
     const xmlFilePath = path.join(__dirname, "../../data/test.xml");
     const xmlData = fs.readFileSync(xmlFilePath, "utf-8");
-
     const parsedData = await parseABNXml(xmlData);
 
-    console.log({ parsedData });
     await ABNRecord.deleteMany({});
 
     for (let i = 0; i < parsedData.length; i += BATCH_SIZE) {
@@ -29,67 +27,73 @@ export const uploadXml = async (req: any, res: any) => {
   }
 };
 
+const buildRegistryFilters = (params: any) => {
+  const {
+    status = [],
+    state = [],
+    gstStatus = [],
+    entityType = [],
+    search,
+    lastUpdatedDate,
+    sortBy = "recordLastUpdatedDate",
+    sortOrder = "desc",
+  } = params;
+
+  const filters: any = {};
+
+  if (Array.isArray(status) && status.length > 0) {
+    filters.status = { $in: status };
+  }
+
+  if (Array.isArray(state) && state.length > 0) {
+    filters.state = { $in: state };
+  }
+
+  if (Array.isArray(gstStatus) && gstStatus.length > 0) {
+    filters.gstStatus = { $in: gstStatus };
+  }
+
+  if (Array.isArray(entityType) && entityType.length > 0) {
+    filters["entityType.ind"] = { $in: entityType };
+  }
+
+  if (search && typeof search === "string") {
+    filters.$or = [
+      { abn: { $regex: search, $options: "i" } },
+      { name: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  if (lastUpdatedDate) {
+    const from = Number(lastUpdatedDate);
+    const to = Date.now();
+
+    if (!isNaN(from)) {
+      filters.recordLastUpdatedDate = {
+        $gte: from,
+        $lte: to,
+      };
+    }
+  }
+
+  const sort: any = {};
+  if (sortBy) {
+    if (sortBy === "entityType") {
+      sort["entityType.text"] = sortOrder === "asc" ? 1 : -1;
+    } else {
+      sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+    }
+  }
+
+  return { filters, sort };
+};
+
 export const getRegistryRecords = async (req: any, res: any) => {
   try {
-    const {
-      status = [],
-      state = [],
-      gstStatus = [],
-      entityType = [],
-      search,
-      lastUpdatedDate,
-      page = 1,
-      limit = 10,
-      sortBy = "recordLastUpdatedDate",
-      sortOrder = "desc",
-    } = req.body;
-
-    const filters: any = {};
-
-    if (Array.isArray(status) && status.length > 0) {
-      filters.status = { $in: status };
-    }
-
-    if (Array.isArray(state) && state.length > 0) {
-      filters.state = { $in: state };
-    }
-
-    if (Array.isArray(gstStatus) && gstStatus.length > 0) {
-      filters.gstStatus = { $in: gstStatus };
-    }
-
-    if (Array.isArray(entityType) && entityType.length > 0) {
-      filters["entityType.ind"] = { $in: entityType };
-    }
-
-    if (search && typeof search === "string") {
-      filters.$or = [
-        { abn: { $regex: search, $options: "i" } },
-        { name: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    if (lastUpdatedDate) {
-      const from = Number(lastUpdatedDate);
-      const to = Date.now();
-
-      if (!isNaN(from)) {
-        filters.recordLastUpdatedDate = {
-          $gte: from,
-          $lte: to,
-        };
-      }
-    }
+    const { page = 1, limit = 10 } = req.body;
 
     const skip = (Number(page) - 1) * Number(limit);
-    const sort: any = {};
-    if (sortBy) {
-      if (sortBy == "entityType") {
-        sort["entityType.text"] = sortOrder === "asc" ? 1 : -1;
-      } else {
-        sort[sortBy] = sortOrder === "asc" ? 1 : -1;
-      }
-    }
+    const { filters, sort } = buildRegistryFilters(req.body);
 
     const [records, total] = await Promise.all([
       ABNRecord.find(filters).sort(sort).skip(skip).limit(Number(limit)),
@@ -102,10 +106,22 @@ export const getRegistryRecords = async (req: any, res: any) => {
         total,
         page: Number(page),
         limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
       },
     });
   } catch (err) {
     console.error("Error fetching records:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const exportRegistryRecords = async (req: any, res: any) => {
+  try {
+    const { filters, sort } = buildRegistryFilters(req.body);
+    const records = await ABNRecord.find(filters).sort(sort);
+    res.status(200).json({ data: records });
+  } catch (err) {
+    console.error("Error exporting records:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
